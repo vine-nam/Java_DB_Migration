@@ -1,4 +1,4 @@
-# Java_DB_Migration
+# Java_DBtoDB_Migration
 
 ## Running
 ```shell
@@ -8,7 +8,7 @@ java -Xms20480m -Xmx204800m -jar migration.jar MigrationFile.sql DBConnectionInf
 ### Argument
 1. MigrationFile.sql(required)
 ```sql
---comment can be used.
+/*comment can be used.*/
 --source_DB,source_Table,target_DB,target_Table
 LOCAL,A.A_TABLE,LOCAL,B.B_TABLE--test sample
 ```
