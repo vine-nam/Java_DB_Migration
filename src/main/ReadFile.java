@@ -27,6 +27,8 @@ public class ReadFile {
 			if (isBlock || line == null || line.isEmpty()) {
 				lines.remove(i);
 				continue;
+			} else {
+				lines.set(i, line);
 			}
 			i++;
 		}
