@@ -49,12 +49,12 @@ public class ReadFile {
 		if (!isBlock && line.contains("/*")) {
 			isBlock = true;
 			strArray = line.split("(/[*])");
-			return strArray.length > 0 ? strArray[0] : null;
+			return strArray.length > 0 ? splitCommend(strArray[1]) : null;
 		}
 		if (line.contains("*/")) {
 			isBlock = false;
 			strArray = line.split("([*]/)");
-			return strArray.length > 0 ? strArray[1] : null;
+			return strArray.length > 1 ? strArray[1] : null;
 		}
 		if (line.contains("--")) {
 			strArray = line.split("--");
