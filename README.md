@@ -9,7 +9,7 @@ java -Xms20480m -Xmx204800m -jar migration.jar MigrationFile.sql DBConnectionInf
 1. MigrationFile.sql(required)
 ```sql
 /*comment can be used.*/
---source_DB,source_Table,target_DB,target_Table,interface_ID,(WHERE 조거문)
+--source_DB,source_Table,target_DB,target_Table,interface_ID,(WHERE절)
 LOCAL,A.A_TABLE,LOCAL,B.B_TABLE,RDD_LOALOB_001,where A='9'--test sample
 ```
 
