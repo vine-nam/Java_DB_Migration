@@ -9,8 +9,8 @@ java -Xms20480m -Xmx204800m -jar migration.jar MigrationFile.sql DBConnectionInf
 1. MigrationFile.sql(required)
 ```sql
 /*comment can be used.*/
---source_DB,source_Table,target_DB,target_Table
-LOCAL,A.A_TABLE,LOCAL,B.B_TABLE--test sample
+--source_DB,source_Table,target_DB,target_Table,interface_ID,(WHERE 조거문)
+LOCAL,A.A_TABLE,LOCAL,B.B_TABLE,RDD_LOALOB_001,where A='9'--test sample
 ```
 
 2. DBConnectionInfoFile.txt(required)
@@ -23,7 +23,7 @@ LOCAL/scott/tiger/localhost:1521:orcl
 
 ### Log
 ```
-[11:07:34] A.A_TABLE -> B.B_TABLE
+[11:07:34] A.A_TABLE → B.B_TABLE (RDD_LOALOB_001)
 [11:07:34] ★★★
-[11:08:12] 총 갯수:     101483
+[11:08:12] 총 수:     101483
 ```
