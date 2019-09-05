@@ -23,53 +23,72 @@ public class DBExecute {
 	
 	DBConnInfo dbConnInfo = new DBConnInfo();
 	HashMap<String, String> dbConnData = null;
-	HashMap<String, String> talbeColumns = null;
+	public HashMap<String, String> talbeColumns = null;
 	
 	String oracleUrl = "jdbc:oracle:thin:@";
 	
 	Blob blob = null;
+	
+	String conditions = null; 
 
 	public DBExecute(String filePath) throws IOException {
 		dbConnInfo.toMap(new ReadFile().readFileExceptCommend(filePath));
 	}
 
-	public Connection getConnection(String dbName) {
+	public Connection getConnection(String dbName) throws Exception {
 		Connection con = null;
 		dbConnData = dbConnInfo.getDbInfo(dbName);
+		if(dbConnData == null) {
+			throw new Exception("'" + dbName + "'은(는) DB접속정보 파일에 없는 이름입니다 ");
+		}
+		
 		try {
 			Class.forName("oracle.jdbc.driver.OracleDriver");
 			con = DriverManager.getConnection(oracleUrl + dbConnData.get("url"), dbConnData.get("user"),
 					dbConnData.get("pass"));
 		} catch (Exception e) {
-			e.printStackTrace();
+			throw new Exception("'" + dbName + "' DB 접속 실패: " + e.getMessage());
 		}
 		return con;
 	}
 
-	public void setSourceConnection(String dbName) {
+	public void setSourceConnection(String dbName) throws Exception {
 		conS = getConnection(dbName);
+		conS.setAutoCommit(false);
 	}
 	
-	public void setTargetConnection(String dbName) {
+	public void setTargetConnection(String dbName) throws Exception {
 		conT = getConnection(dbName);
+		conT.setAutoCommit(false);
+	}
+	
+	public void setConditionalStatment(String conditions) {
+		this.conditions = conditions;
 	}
 
-	public void closeConnection(Connection con) throws SQLException {
-		if (con != null) {
-			con.close();
-			con = null;
+	public void closeSourceConnection() throws SQLException {
+		if (conS != null) {
+			conS.close();
+			conS = null;
+		}
+	}
+	
+	public void closeTargetConnection() throws SQLException {
+		if (conT != null) {
+			conT.close();
+			conT = null;
 		}
 	}
 
-	public void executeMigration(String sourceTable, String targetTable) {
+	public void executeMigration(String sourceDbName, String sourceTable, String targetTable) throws Exception {
+		getColumns(conS, sourceTable);
+		truncateTable(conT, getTableName(conT, targetTable.toUpperCase()));
 		try {
-			getColumns(conS, sourceTable);
-			truncateTable(conT, getTableName(conT, targetTable));
-			insertIntoTable(conT, selectTable(conS, sourceTable), targetTable);
+			truncateTable(conS, changeIRtoIS(sourceDbName, targetTable.toUpperCase()));
 		} catch (Exception e) {
-			Com.printDate();
-			e.printStackTrace();
+			Com.printWarnLog(e.getMessage());
 		}
+		insertIntoTable(conT, selectTable(conS, sourceTable), targetTable);
 	}
 
 	public ResultSet excuteSql(Connection con, String sql) throws SQLException {
@@ -94,6 +113,9 @@ public class DBExecute {
 
 	public ResultSet selectTable(Connection con, String table) throws SQLException {
 		String sql = "SELECT * FROM " + table;
+		if(conditions != null && !conditions.isEmpty()) {
+			sql += " WHERE " + conditions;
+		}
 		return excuteSql(con, sql);
 	}
 
@@ -104,13 +126,33 @@ public class DBExecute {
 		return sql;
 	}
 
-	public void insertIntoTable(Connection con, ResultSet rs, String table) {
+	private String changeIRtoIS(String sourceDbName, String table) {
+		String[] str = table.split("\\.");
+		String strTable = table;
+		String ifStr;
+		String user;
+		if(str.length > 1) {
+			strTable = str[1];
+		} 
+		ifStr = strTable.split("_")[0];
+		if(ifStr != null) {
+			user = dbConnInfo.getDbInfo(sourceDbName).get("user");
+			if(ifStr.equals("IR")) {
+				return user + "." + strTable.replaceFirst("IR", "IS");
+			}
+			if(ifStr.equals("IV")) {
+				return user + "." + strTable.replaceFirst("IV", "IS");
+			}
+		}
+		return table;
+	}
+
+	public void insertIntoTable(Connection con, ResultSet rs, String table) throws Exception {
 		int i = 0;
 		int j = 0;
 
 		try {
 			pstmt = con.prepareStatement(createInsertSql(table));
-			con.setAutoCommit(false);
 
 			Com.printDate();
 			while (rs.next()) {
@@ -141,19 +183,19 @@ public class DBExecute {
 					pstmt.clearBatch();
 				}
 			}
-			System.out.println("★");
-			Com.printLog("총 갯수:\t" + i);
-
+			System.out.println("★");	
+			
 			pstmt.executeBatch();
-			con.commit();
+			conT.commit();
+			
+			Com.printLog("총 개수:\t" + i);
 		} catch (SQLException e) {
-			System.out.println();
-			e.printStackTrace();
 			try {
 				con.rollback();
 			} catch (SQLException e1) {
-				e1.printStackTrace();
+				throw new Exception(e1);
 			}
+			throw new Exception("'" + table + "'테이블 INSERT 실패: " + e.getMessage());
 		} finally {
 			if (rs != null)
 				try {
@@ -167,25 +209,36 @@ public class DBExecute {
 					pstmt = null;
 				} catch (SQLException ex) {
 				}
-			System.out.println();
 		}
 	}
 
-	public void truncateTable(Connection con, String table) throws SQLException {
-		String sqlTruncateTarget = "TRUNCATE TABLE " + table;
-		excuteSql(con, sqlTruncateTarget);
+	public void truncateTable(Connection con, String table) throws Exception {
+		String sql = "TRUNCATE TABLE " + table;
+		try {
+			excuteSql(con, sql);
+		} catch (SQLException e) {
+			throw new Exception("'" + table + "'테이블 TRUNCATE 실패: " + e.getMessage());
+		}
 	}
 
 	public String getTableName(Connection con, String table) throws SQLException {
-		table = table.toUpperCase().split("\\.")[1];
-		String sql = "SELECT TABLE_NAME FROM USER_SYNONYMS WHERE SYNONYM_NAME = '" + table + "'";
+		String[] item = table.split("\\.");
+		String userName = null;
+		String tableName = null;
 		
-		rs = excuteSql(con, sql);
-		if (rs.next()) {
-			table = rs.getString("TABLE_NAME");
+		if(item.length > 1) {
+			userName = item[0];
+			tableName = item[1];
+			String sql = "SELECT TABLE_NAME FROM USER_SYNONYMS WHERE SYNONYM_NAME = '" + tableName + "'";
+			
+			rs = excuteSql(con, sql);
+			if (rs.next()) {
+				tableName = rs.getString("TABLE_NAME");
+			}
+			rs.close();
+			rs = null;
+			return userName + "." + tableName;
 		}
-		rs.close();
-		rs = null;
 		return table;
 	}
 }
