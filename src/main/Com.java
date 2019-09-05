@@ -10,6 +10,18 @@ public class Com {
 		printDate();
 		System.out.println(text);
 	}
+
+	static void printErrorLog(String text) {
+		printDate();
+		System.out.print("[ERROR] ");
+		System.out.println(text);
+	}
+
+	static void printWarnLog(String text) {
+		printDate();
+		System.out.print("[WARN] ");
+		System.out.println(text);
+	}
 	
 	static void printDate() {
 		System.out.print(dateFormat.format(new Date()));
