@@ -39,7 +39,7 @@ public class DBExecute {
 		Connection con = null;
 		dbConnData = dbConnInfo.getDbInfo(dbName);
 		if(dbConnData == null) {
-			throw new Exception("'" + dbName + "'은(는) DB접속정보 파일에 없는 이름입니다 ");
+			throw new Exception(String.format("'%s'은(는) DB접속정보 파일에 없는 이름입니다.", dbName));
 		}
 		
 		try {
@@ -100,8 +100,8 @@ public class DBExecute {
 		talbeColumns = new HashMap<String, String>();
 		String[] item = table.toUpperCase().split("\\.");
 
-		String sqlColumns = "SELECT COLUMN_NAME, DATA_TYPE FROM all_tab_columns WHERE TABLE_NAME = '" + item[1]
-				+ "' AND OWNER = '" + item[0] + "'";
+		String sqlColumns = String.format("SELECT COLUMN_NAME, DATA_TYPE FROM all_tab_columns WHERE TABLE_NAME = '%s' AND OWNER = '%s'", 
+				item[1], item[0]);
 
 		rs = excuteSql(con, sqlColumns);
 		while (rs.next()) {
@@ -112,10 +112,11 @@ public class DBExecute {
 	}
 
 	public ResultSet selectTable(Connection con, String table) throws SQLException {
-		String sql = "SELECT * FROM " + table;
+		String conditionSql = "";
 		if(conditions != null && !conditions.isEmpty()) {
-			sql += " WHERE " + conditions;
+			conditionSql = "WHERE " + conditions;
 		}
+		String sql = String.format("SELECT * FROM %s %s", table, conditionSql);
 		ResultSet rs = excuteSql(con, sql);
 		rs.setFetchSize(batchSize);
 		return rs;
@@ -124,7 +125,7 @@ public class DBExecute {
 	public String createInsertSql(String table) {
 		String colList = talbeColumns.entrySet().stream().map(x -> x.getKey()).collect(Collectors.joining(","));
 		String paramList = talbeColumns.entrySet().stream().map(x -> "?").collect(Collectors.joining(","));
-		String sql = "INSERT INTO " + table + "(" + colList + ") VALUES (" + paramList + ")";
+		String sql = String.format("INSERT INTO %s (%s) VALUES (%s)", table, colList, paramList);
 		return sql;
 	}
 
@@ -197,7 +198,7 @@ public class DBExecute {
 			} catch (SQLException e1) {
 				throw new Exception(e1);
 			}
-			throw new Exception("'" + table + "'테이블 INSERT 실패: " + e.getMessage());
+			throw new Exception(String.format("'%s'테이블 INSERT 실패: %s", table, e.getMessage()));
 		} finally {
 			if (rs != null)
 				try {
@@ -219,7 +220,7 @@ public class DBExecute {
 		try {
 			excuteSql(con, sql);
 		} catch (SQLException e) {
-			throw new Exception("'" + table + "'테이블 TRUNCATE 실패: " + e.getMessage());
+			throw new Exception(String.format("'%s'테이블 TRUNCATE 실패: %s", table, e.getMessage()));
 		}
 	}
 
@@ -231,7 +232,7 @@ public class DBExecute {
 		if(item.length > 1) {
 			userName = item[0];
 			tableName = item[1];
-			String sql = "SELECT TABLE_NAME FROM USER_SYNONYMS WHERE SYNONYM_NAME = '" + tableName + "'";
+			String sql = String.format("SELECT TABLE_NAME FROM USER_SYNONYMS WHERE SYNONYM_NAME = '%s'", tableName);
 			
 			rs = excuteSql(con, sql);
 			if (rs.next()) {
