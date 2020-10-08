@@ -116,7 +116,9 @@ public class DBExecute {
 		if(conditions != null && !conditions.isEmpty()) {
 			sql += " WHERE " + conditions;
 		}
-		return excuteSql(con, sql);
+		ResultSet rs = excuteSql(con, sql);
+		rs.setFetchSize(batchSize);
+		return rs;
 	}
 
 	public String createInsertSql(String table) {
