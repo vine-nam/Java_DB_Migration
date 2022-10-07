@@ -23,7 +23,6 @@ public class DBExecute {
 	
 	DBConnInfo dbConnInfo = new DBConnInfo();
 	HashMap<String, String> dbConnData = null;
-	public HashMap<String, String> talbeColumns = null;
 	
 	String oracleUrl = "jdbc:oracle:thin:@";
 	
@@ -81,14 +80,27 @@ public class DBExecute {
 	}
 
 	public void executeMigration(String sourceDbName, String sourceTable, String targetTable) throws Exception {
-		getColumns(conS, sourceTable);
+		HashMap<String, String> srcTableColumns = getColumns(conS, sourceTable);
+		HashMap<String, String> trgTableColumns = getColumns(conT, targetTable);
+		
 		truncateTable(conT, getTableName(conT, targetTable.toUpperCase()));
 		try {
 			truncateTable(conS, changeIRtoIS(sourceDbName, targetTable.toUpperCase()));
 		} catch (Exception e) {
 			Com.printWarnLog(e.getMessage());
 		}
-		insertIntoTable(conT, selectTable(conS, sourceTable), targetTable);
+		HashMap<String, String> resultTableColumns = compareColumns(srcTableColumns, trgTableColumns);
+		insertIntoTable(conT, selectTable(conS, sourceTable, resultTableColumns), targetTable , resultTableColumns);
+	}
+
+	private HashMap<String, String> compareColumns(HashMap<String, String> srcTableColumns, HashMap<String, String> trgTableColumns) {
+		HashMap<String, String> resultTableColumns = new HashMap<String, String>();
+		for (String key : srcTableColumns.keySet()) {
+			if (trgTableColumns.containsKey(key)) {
+				resultTableColumns.put(key, srcTableColumns.get(key));
+			}
+		}
+		return resultTableColumns;
 	}
 
 	public ResultSet excuteSql(Connection con, String sql) throws SQLException {
@@ -96,8 +108,8 @@ public class DBExecute {
 		return stm.executeQuery(sql);
 	}
 
-	public void getColumns(Connection con, String table) throws SQLException {
-		talbeColumns = new HashMap<String, String>();
+	public HashMap<String, String> getColumns(Connection con, String table) throws SQLException {
+		HashMap<String, String> tableColumns = new HashMap<String, String>();
 		String[] item = table.toUpperCase().split("\\.");
 
 		String sqlColumns = String.format("SELECT COLUMN_NAME, DATA_TYPE FROM all_tab_columns WHERE TABLE_NAME = '%s' AND OWNER = '%s'", 
@@ -105,27 +117,28 @@ public class DBExecute {
 
 		rs = excuteSql(con, sqlColumns);
 		while (rs.next()) {
-			talbeColumns.put(rs.getString(1), rs.getString(2));
+			tableColumns.put(rs.getString(1), rs.getString(2));
 		}
 		rs.close();
 		rs = null;
+		return tableColumns;
 	}
 
-	public ResultSet selectTable(Connection con, String table) throws SQLException {
-		String conditionSql = "";
+	public ResultSet selectTable(Connection con, String tableName, HashMap<String, String> tableColumns) throws SQLException {
+		String colList = tableColumns.entrySet().stream().map(x -> x.getKey()).collect(Collectors.joining(","));
+		String sql = "SELECT " + colList +" FROM " + tableName;
 		if(conditions != null && !conditions.isEmpty()) {
-			conditionSql = "WHERE " + conditions;
+			sql += " WHERE " + conditions;
 		}
-		String sql = String.format("SELECT * FROM %s %s", table, conditionSql);
 		ResultSet rs = excuteSql(con, sql);
 		rs.setFetchSize(batchSize);
-		return rs;
+		return rs; 
 	}
 
-	public String createInsertSql(String table) {
-		String colList = talbeColumns.entrySet().stream().map(x -> x.getKey()).collect(Collectors.joining(","));
-		String paramList = talbeColumns.entrySet().stream().map(x -> "?").collect(Collectors.joining(","));
-		String sql = String.format("INSERT INTO %s (%s) VALUES (%s)", table, colList, paramList);
+	public String createInsertSql(HashMap<String, String> tableColumns, String tableName) {
+		String colList = tableColumns.entrySet().stream().map(x -> x.getKey()).collect(Collectors.joining(","));
+		String paramList = tableColumns.entrySet().stream().map(x -> "?").collect(Collectors.joining(","));
+		String sql = String.format("INSERT INTO %s (%s) VALUES (%s)", tableName, colList, paramList);
 		return sql;
 	}
 
@@ -147,26 +160,26 @@ public class DBExecute {
 				return user + "." + strTable.replaceFirst("IV", "IS");
 			}
 		}
-		return table;
+		return null;
 	}
 
-	public void insertIntoTable(Connection con, ResultSet rs, String table) throws Exception {
+	public void insertIntoTable(Connection con, ResultSet rs, String table, HashMap<String, String> tableColumns) throws Exception {
 		int i = 0;
 		int j = 0;
 
 		try {
-			pstmt = con.prepareStatement(createInsertSql(table));
+			pstmt = con.prepareStatement(createInsertSql(tableColumns, table));
 
 			Com.printDate();
 			while (rs.next()) {
 				i++;
 				j = 0;
-				for (String key : talbeColumns.keySet()) {
-					if (talbeColumns.get(key).contains("TIMESTAMP")) {
+				for (String key : tableColumns.keySet()) {
+					if (tableColumns.get(key).contains("TIMESTAMP")) {
 						pstmt.setTimestamp(++j, rs.getTimestamp(key));
-					} else if (talbeColumns.get(key).contains("DATE")) {
+					} else if (tableColumns.get(key).contains("DATE")) {
 						pstmt.setTimestamp(++j, rs.getTimestamp(key));
-					} else if (talbeColumns.get(key).contains("BLOB")) {
+					} else if (tableColumns.get(key).contains("BLOB")) {
 						if (blob == null) {
 							blob = con.createBlob();
 						}
@@ -198,7 +211,7 @@ public class DBExecute {
 			} catch (SQLException e1) {
 				throw new Exception(e1);
 			}
-			throw new Exception(String.format("'%s'테이블 INSERT 실패: %s", table, e.getMessage()));
+			throw new Exception("'" + table + "'테이블 INSERT 실패: " + e.getMessage());
 		} finally {
 			if (rs != null)
 				try {
@@ -216,11 +229,13 @@ public class DBExecute {
 	}
 
 	public void truncateTable(Connection con, String table) throws Exception {
-		String sql = "TRUNCATE TABLE " + table;
-		try {
-			excuteSql(con, sql);
-		} catch (SQLException e) {
-			throw new Exception(String.format("'%s'테이블 TRUNCATE 실패: %s", table, e.getMessage()));
+		if (table != null && !table.isEmpty()) {
+			String sql = "TRUNCATE TABLE " + table;
+			try {
+				excuteSql(con, sql);
+			} catch (SQLException e) {
+				throw new Exception(String.format("'%s'테이블 TRUNCATE 실패: %s", table, e.getMessage()));
+			}
 		}
 	}
 
